@@ -1,0 +1,24 @@
+{
+  "local-qwen": {
+    "MODEL_BACKEND": "local",
+    "LOCAL_MODEL": "Qwen/Qwen3-8B",
+    "LOCAL_BASE_URL": "http://localhost:8080/v1",
+    "NHS_MCP_CWD": "/path/to/nhs-intelligence-mcp",
+    "NHS_INTEL_DB": "/path/to/nhs-intelligence-mcp/data/nhs_intel.db"
+  },
+  "gemini-flash": {
+    "MODEL_BACKEND": "gemini",
+    "GEMINI_MODEL": "gemini-3.7-flash",
+    "GEMINI_API_KEY": "${GEMINI_API_KEY}",
+    "NHS_MCP_CWD": "/path/to/nhs-intelligence-mcp",
+    "NHS_INTEL_DB": "/path/to/nhs-intelligence-mcp/data/nhs_intel.db"
+  },
+  "hosted-open-weight": {
+    "MODEL_BACKEND": "hosted",
+    "HOSTED_MODEL": "provider-pinned-model-id",
+    "HOSTED_BASE_URL": "https://provider.example/v1",
+    "HOSTED_API_KEY": "${HOSTED_API_KEY}",
+    "NHS_MCP_CWD": "/path/to/nhs-intelligence-mcp",
+    "NHS_INTEL_DB": "/path/to/nhs-intelligence-mcp/data/nhs_intel.db"
+  }
+}

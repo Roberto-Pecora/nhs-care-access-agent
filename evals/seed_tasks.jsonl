@@ -1,0 +1,4 @@
+# Smoke-test cases only. Replace synthetic values with expected outputs from a
+# versioned frozen nhs_intel.db before publishing any benchmark result.
+{"id":"joined-profile","question":"Compare the current wait, trend, and quality for Example Trust cardiology.","required_tools":["trust_profile"],"required_facts":["12 weeks","good"],"max_tool_calls":1}
+{"id":"missing-data","question":"What is the current wait for an unlisted specialty at Example Trust?","required_tools":["lookup_wait_time"],"required_facts":["cannot"],"should_abstain":true,"max_tool_calls":1}

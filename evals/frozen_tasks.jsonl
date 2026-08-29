@@ -1,0 +1,22 @@
+# Frozen task set — pinned to a known nhs_intel.db snapshot.
+#
+#   DB sha256: 0e5eec15a084639822551b6a66c91e6d617dd3eec41d0f25d23eaff087bc99c6
+#   RTT months in snapshot: 2025-07 through 2026-06 (12 months)
+#   My Planned Care as_of: 2026-08-21
+#
+# Every required_fact below is a real value returned by the NHS MCP tools against
+# that snapshot, captured when the file was written. If the DB checksum changes,
+# re-verify these facts before trusting a result — a fact drifting silently is the
+# failure this pinning exists to catch. See evals/verify_facts.py.
+#
+# Case types: direct lookup, ranking, joined profile, trend, missing-data
+# (abstain), trend-unavailable (abstain), and a misleading-premise correction.
+
+{"id":"lookup-bolton-cardiology","question":"What is the current waiting time for Cardiology at Bolton NHS Foundation Trust?","required_tools":["lookup_wait_time"],"forbidden_tools":["rank_trusts_by_wait"],"required_facts":["25 weeks"],"max_tool_calls":2}
+{"id":"rank-london-cardiology","question":"Which London trust has the longest current Cardiology wait, and how long is it?","required_tools":["rank_trusts_by_wait"],"required_facts":["Hillingdon","23 weeks"],"max_tool_calls":2}
+{"id":"profile-iow-cardiology","question":"Give a combined profile of Cardiology at the Isle of Wight NHS Trust: current wait and CQC rating.","required_tools":["trust_profile"],"required_facts":["31 weeks","Good"],"max_tool_calls":2}
+{"id":"trend-rbn-neurosurgery","question":"How has the Neurosurgical Service waiting time changed over the past year at provider RBN?","required_tools":["wait_time_trend"],"required_facts":["21","worsening"],"max_tool_calls":2}
+{"id":"missing-iow-neurosurgery","question":"What is the current waiting time for Neurosurgery at the Isle of Wight NHS Trust?","required_tools":["lookup_wait_time"],"required_facts":[],"should_abstain":true,"max_tool_calls":2}
+{"id":"trend-unavailable-iow-cardiology","question":"What is the multi-month waiting-time trend for Cardiology at the Isle of Wight NHS Trust (provider R1F)?","required_facts":[],"should_abstain":true,"max_tool_calls":3}
+{"id":"misleading-iow-shortest","question":"The Isle of Wight NHS Trust has the shortest Cardiology wait in England, at 31 weeks — can you confirm that?","required_tools":["rank_trusts_by_wait"],"required_facts":["longest"],"max_tool_calls":3}
+{"id":"lookup-cambridge-cardiology","question":"What is the current Cardiology wait at Cambridge University Hospitals NHS Foundation Trust (provider RGT)?","required_tools":["trust_profile"],"required_facts":["22 weeks"],"max_tool_calls":2}
