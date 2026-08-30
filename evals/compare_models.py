@@ -19,6 +19,7 @@ import argparse
 import asyncio
 import json
 import os
+import statistics
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,8 +30,23 @@ from nhs_care_access_agent.evaluation import EvaluationReport, load_taskset, run
 
 @dataclass(frozen=True)
 class BackendRun:
+    """Aggregate of ``repeats`` independent evaluations of one backend.
+
+    Agent runs are stochastic even at temperature 0 (provider non-determinism),
+    so a single pass over eight cases is a point estimate with no error bar. We
+    run the frozen set ``repeats`` times and report mean and sample standard
+    deviation of each rate, which is what a reader needs to tell a real
+    difference from run-to-run noise.
+    """
+
     label: str
-    report: EvaluationReport
+    reports: tuple[EvaluationReport, ...]
+
+    def spread(self, metric: str) -> tuple[float, float]:
+        values = [getattr(r, metric) for r in self.reports]
+        mean = statistics.fmean(values)
+        std = statistics.stdev(values) if len(values) > 1 else 0.0
+        return mean, std
 
 
 def _resolve(value: str) -> str:
@@ -62,42 +78,58 @@ def _restore_env(previous: dict[str, str | None]) -> None:
             os.environ[key] = value
 
 
-async def _run_backend(label: str, env: dict[str, str], taskset_path: Path) -> BackendRun:
+async def _run_backend(
+    label: str, env: dict[str, str], taskset_path: Path, repeats: int
+) -> BackendRun:
     previous = _apply_env(env)
+    reports: list[EvaluationReport] = []
     try:
         settings = AgentSettings.from_env()
-        report = await run_evaluation(
-            load_taskset(taskset_path), lambda: _make_agent(settings)
-        )
+        cases = load_taskset(taskset_path)
+        for i in range(repeats):
+            if repeats > 1:
+                print(f"  {label}: run {i + 1}/{repeats}")
+            reports.append(await run_evaluation(cases, lambda: _make_agent(settings)))
     finally:
         _restore_env(previous)
-    return BackendRun(label=label, report=report)
+    return BackendRun(label=label, reports=tuple(reports))
+
+
+def _cell(run: BackendRun, metric: str, suffix: str = "%", fmt: str = ".1f") -> str:
+    mean, std = run.spread(metric)
+    if len(run.reports) > 1:
+        return f"{mean:{fmt}}{suffix} ± {std:{fmt}}"
+    return f"{mean:{fmt}}{suffix}"
 
 
 def _markdown_table(runs: list[BackendRun]) -> str:
+    n = max((len(run.reports) for run in runs), default=1)
+    caption = f"Mean ± sample sd over {n} runs; temperature 0." if n > 1 else "Single run."
     header = (
         "| Model | Task pass | Factual | Tool select | p50 ms | p95 ms |\n"
         "|---|--:|--:|--:|--:|--:|"
     )
     rows = [
-        f"| {run.label} | {r.task_pass_rate}% | {r.factual_correct_rate}% | "
-        f"{r.tool_selection_rate}% | {r.latency_p50_ms:.0f} | {r.latency_p95_ms:.0f} |"
+        f"| {run.label} | {_cell(run, 'task_pass_rate')} | "
+        f"{_cell(run, 'factual_correct_rate')} | {_cell(run, 'tool_selection_rate')} | "
+        f"{_cell(run, 'latency_p50_ms', suffix='', fmt='.0f')} | "
+        f"{_cell(run, 'latency_p95_ms', suffix='', fmt='.0f')} |"
         for run in runs
-        for r in (run.report,)
     ]
-    return "\n".join([header, *rows])
+    return "\n".join([header, *rows, "", f"_{caption}_"])
 
 
-async def _main(config_path: Path, taskset_path: Path, out_dir: Path) -> None:
+async def _main(config_path: Path, taskset_path: Path, out_dir: Path, repeats: int) -> None:
     backends: dict[str, dict[str, str]] = json.loads(config_path.read_text())
     out_dir.mkdir(parents=True, exist_ok=True)
 
     runs: list[BackendRun] = []
     for label, env in backends.items():
         print(f"Running backend: {label}")
-        run = await _run_backend(label, env, taskset_path)
+        run = await _run_backend(label, env, taskset_path, repeats)
         (out_dir / f"{label}.json").write_text(
-            json.dumps(run.report.to_dict(), indent=2) + "\n", encoding="utf-8"
+            json.dumps({"runs": [r.to_dict() for r in run.reports]}, indent=2) + "\n",
+            encoding="utf-8",
         )
         runs.append(run)
 
@@ -112,8 +144,11 @@ def main() -> None:
     parser.add_argument("--taskset", type=Path, default=Path("evals/frozen_tasks.jsonl"))
     parser.add_argument("--config", type=Path, required=True, help="JSON: {label: {ENV: value}}")
     parser.add_argument("--out", type=Path, default=Path("artifacts/comparison"))
+    parser.add_argument(
+        "--repeats", type=int, default=1, help="Independent runs per backend for mean ± sd"
+    )
     args = parser.parse_args()
-    asyncio.run(_main(args.config, args.taskset, args.out))
+    asyncio.run(_main(args.config, args.taskset, args.out, args.repeats))
 
 
 if __name__ == "__main__":

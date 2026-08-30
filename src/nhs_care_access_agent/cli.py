@@ -11,7 +11,7 @@ from .agent import CareAccessAgent
 from .config import AgentSettings
 from .evaluation import load_taskset, run_evaluation
 from .mcp_client import StdioMcpToolClient
-from .providers import GeminiModel, OpenAICompatibleModel
+from .providers import AnthropicModel, GeminiModel, OpenAICompatibleModel
 from .tracing import JsonlTraceSink
 
 
@@ -43,6 +43,8 @@ def main() -> None:
 def _make_agent(settings: AgentSettings) -> CareAccessAgent:
     if settings.backend == "gemini":
         model = GeminiModel(settings.model, settings.api_key or "")
+    elif settings.backend == "anthropic":
+        model = AnthropicModel(settings.model, settings.api_key or "")
     else:
         model = OpenAICompatibleModel(settings.model, settings.base_url or "", settings.api_key)
     tools = StdioMcpToolClient(settings.mcp_command, settings.mcp_args, settings.mcp_cwd)

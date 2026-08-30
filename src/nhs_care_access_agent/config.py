@@ -28,8 +28,10 @@ class AgentSettings:
     @classmethod
     def from_env(cls) -> AgentSettings:
         backend = os.getenv("MODEL_BACKEND", "local").strip().lower()
-        if backend not in {"local", "gemini", "hosted"}:
-            raise ConfigurationError("MODEL_BACKEND must be one of: local, gemini, hosted")
+        if backend not in {"local", "gemini", "hosted", "anthropic"}:
+            raise ConfigurationError(
+                "MODEL_BACKEND must be one of: local, gemini, hosted, anthropic"
+            )
 
         mcp_command = os.getenv("NHS_MCP_COMMAND", "uv")
         mcp_args = tuple(shlex.split(os.getenv("NHS_MCP_ARGS", "run nhs-intel-mcp")))
@@ -43,6 +45,14 @@ class AgentSettings:
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise ConfigurationError("GEMINI_API_KEY is required for MODEL_BACKEND=gemini")
+            base_url = None
+        elif backend == "anthropic":
+            model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ConfigurationError(
+                    "ANTHROPIC_API_KEY is required for MODEL_BACKEND=anthropic"
+                )
             base_url = None
         elif backend == "hosted":
             model = os.getenv("HOSTED_MODEL", "")

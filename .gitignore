@@ -6,3 +6,6 @@ __pycache__/
 *.py[cod]
 artifacts/
 phoenix/
+# Real backend config may hold endpoints/keys; only the example is committed.
+evals/backends.json
+evals/backends_*.json

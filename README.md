@@ -95,6 +95,14 @@ export HOSTED_BASE_URL=https://provider.example/v1
 export HOSTED_API_KEY=replace-me
 ```
 
+**Claude** — the frontier ceiling for the benchmark, via the native Messages API:
+
+```bash
+export MODEL_BACKEND=anthropic
+export ANTHROPIC_MODEL=claude-sonnet-5
+export ANTHROPIC_API_KEY=replace-me
+```
+
 ### 4. Ask a question
 
 ```bash
@@ -107,24 +115,88 @@ records are written to `TRACE_PATH` when configured.
 
 ## Evaluation
 
+Two task files ship here. `evals/seed_tasks.jsonl` is a synthetic smoke test with
+no real data behind it. `evals/frozen_tasks.jsonl` is the real benchmark: every
+expected fact is a value the NHS MCP tools return against a **pinned**
+`nhs_intel.db` snapshot (its sha256 is recorded in the file header, along with the
+RTT months and My Planned Care date it was captured from). It spans direct lookup,
+ranking, joined profile, a twelve-month waiting-time trend, a missing-data
+abstention, a trend-unavailable abstention, and a misleading-premise correction.
+
 ```bash
-uv run nhs-care-access-agent evaluate --taskset evals/seed_tasks.jsonl
+# Point at the pinned DB and the MCP checkout, then run the frozen set:
+export NHS_MCP_CWD=/path/to/nhs-intelligence-mcp
+export NHS_INTEL_DB="$NHS_MCP_CWD/data/nhs_intel.db"
+uv run nhs-care-access-agent evaluate --taskset evals/frozen_tasks.jsonl
 ```
 
-`evals/seed_tasks.jsonl` is intentionally a **synthetic smoke test**, not a
-benchmark. Before publishing portfolio metrics:
+A frozen fact is only trustworthy while its snapshot is unchanged.
+`evals/verify_facts.py` checks the DB checksum and re-asserts every fact against
+the live tools; run it before trusting a result—a mismatch means the snapshot
+moved, not that a model failed:
 
-1. Freeze a known `nhs_intel.db` version and record its release checksum.
-2. Build a task set from that snapshot, with expected facts and permitted tool
-   paths reviewed by a human.
-3. Include direct lookup, ranking, joined profiles, incomplete-data cases, and
-   misleading/ambiguous prompts.
-4. Run each model with fixed prompt, temperature, model revision, hardware or
-   provider, and date.
-5. Report task pass rate, factual correctness, tool-selection rate, p50/p95
-   latency, and cost per completed task—plus a small manual review set. The
-   evaluator emits the pass rates and p50/p95 latency directly; cost per task is
-   still a manual step, as the trace carries no token or pricing data yet.
+```bash
+uv run python evals/verify_facts.py
+```
+
+To compare models, run the same frozen set across each backend and get one table
+(pass rate, factual correctness, tool-selection rate, p50/p95 latency). Backends
+are named in a JSON config; copy `evals/backends.example.json`, fill in your
+endpoints, and keep secrets in the shell via `${VAR}` references:
+
+```bash
+uv run python evals/compare_models.py \
+  --taskset evals/frozen_tasks.jsonl \
+  --config evals/backends.json \
+  --out artifacts/comparison \
+  --repeats 5
+```
+
+`--repeats` runs the set that many times per backend and reports mean ± sample
+standard deviation, so a real difference can be told from run-to-run noise; the
+default of 1 is a single point estimate.
+
+### Results
+
+Measured on the pinned snapshot (`0e5eec15…`, 12 RTT months, 8 frozen cases),
+**five runs per model** (mean ± sample sd). Claude via the `anthropic` backend,
+Nemotron and MiniMax via OpenRouter (`hosted`), the 3B locally through Ollama.
+
+| Model | Task pass | Factual | Tool select | p50 ms | p95 ms |
+|---|--:|--:|--:|--:|--:|
+| Claude Sonnet 5 | 97.5 ± 5.6 | 100 ± 0 | 100 ± 0 | 4897 | 7479 |
+| nvidia/nemotron-3-super-120b | 77.5 ± 10.5 | 95.0 ± 6.8 | 100 ± 0 | 6873 | 15733 |
+| minimax/minimax-m3 | 77.5 ± 5.6 | 87.5 ± 0 | 97.5 ± 5.6 | 16029 | 29815 |
+| llama3.2:3b (local) | 37.5 ± 0 | 50.0 ± 0 | 62.5 ± 0 | 4865 | 7297 |
+
+Running five times, rather than once, changes the reading:
+
+- **Point estimates were optimistic.** A single run put Nemotron at 87.5%; over
+  five it is 77.5 ± 10.5 — the widest spread of the four, and the one run had
+  caught a good day. Reporting n=1 would have overstated it by ten points.
+- **Claude Sonnet 5 sets a clean ceiling at 97.5%,** and its one recurring miss
+  is the evaluator's keyword abstention check failing to match a correctly hedged
+  refusal — instrumentation, not capability.
+- **Accuracy ties hide a latency gap.** Nemotron and MiniMax match on pass rate,
+  but MiniMax is ~3× slower (p50 16s vs. 7s) — invisible without the latency axis.
+- **The 3B is deterministic at 37.5%** (σ=0 on every quality metric): it fails the
+  same five cases every run — emitting tool calls as literal text without invoking
+  them, passing malformed arguments (`by_name` as the string `"True"`, invented
+  identifiers), and confirming a false premise by agreeing a 31-week wait was one
+  of the shortest in England. Systematic failures, not unlucky sampling.
+
+The most useful output is what the harness caught about itself. Two **scoring**
+gaps are reported rather than tuned away. Abstention is detected by keyword
+(`cannot`, `no data`, `does not have`), so a naturally phrased refusal such as
+"does not currently have a reported waiting time" is under-counted — the single
+largest distortion, and the reason even Sonnet drops below 100%. And pinning one
+`required_tool` penalises a correct answer reached by a valid alternate path. A
+more robust abstention check (or an LLM judge for abstention only, calibrated
+against human labels) and equivalent-path tool scoring are future work.
+
+Runs are at temperature 0 where the provider allows it; Claude runs at its default
+(temperature is deprecated on current Claude models). Cost per completed task is
+recorded manually; the trace carries no token or pricing data yet.
 
 The deterministic evaluator deliberately does not use an LLM judge for factual
 correctness. An LLM judge can later assess communication quality, but should be

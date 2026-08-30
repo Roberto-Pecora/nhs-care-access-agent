@@ -20,5 +20,12 @@
     "HOSTED_API_KEY": "${HOSTED_API_KEY}",
     "NHS_MCP_CWD": "/path/to/nhs-intelligence-mcp",
     "NHS_INTEL_DB": "/path/to/nhs-intelligence-mcp/data/nhs_intel.db"
+  },
+  "claude-sonnet-5": {
+    "MODEL_BACKEND": "anthropic",
+    "ANTHROPIC_MODEL": "claude-sonnet-5",
+    "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",
+    "NHS_MCP_CWD": "/path/to/nhs-intelligence-mcp",
+    "NHS_INTEL_DB": "/path/to/nhs-intelligence-mcp/data/nhs_intel.db"
   }
 }
